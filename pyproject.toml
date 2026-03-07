@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "the-semantic-layer"
+version = "0.1.0"
+description = "A compiled graph of measures, dimensions, and compatibility relationships over Unity Catalog metric views."
+requires-python = ">=3.11"
+dependencies = [
+    "databricks-sql-connector>=3.0.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/the_semantic_layer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+src = ["src"]
