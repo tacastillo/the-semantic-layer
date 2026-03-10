@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from the_semantic_layer.models import Dimension, Measure
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from the_semantic_layer.models import Dimension, Measure
 
 
 def build_query(
@@ -46,8 +49,8 @@ def _build_single_view_query(
     view_name = next(iter(views))
     params: list = []
 
-    dim_cols = [f"{d.column_name}" for d in dimensions]
-    measure_cols = [_measure_select(m) for m in measures]
+    dim_cols = [dim.sql_name for dim in dimensions]
+    measure_cols = [_measure_select(measure) for measure in measures]
 
     select_parts = dim_cols + measure_cols
     sep = ",\n    "
@@ -77,14 +80,14 @@ def _build_multi_view_query(
     cte_names: list[str] = []
     cte_definitions: list[str] = []
 
-    dim_cols = [d.column_name for d in dimensions]
+    dim_cols = [d.sql_name for d in dimensions]
 
     for view_fqn, view_measures in views.items():
         # Create a safe CTE alias from the view name
         cte_alias = _cte_alias(view_fqn)
         cte_names.append(cte_alias)
 
-        select_parts = list(dim_cols) + [_measure_select(m) for m in view_measures]
+        select_parts = list(dim_cols) + [_measure_select(measure) for measure in view_measures]
         cte_sep = ",\n        "
         cte_sql = f"SELECT\n        {cte_sep.join(select_parts)}"
         cte_sql += f"\n    FROM {view_fqn}"
@@ -104,9 +107,9 @@ def _build_multi_view_query(
     first_cte = cte_names[0]
     final_dims = [f"{first_cte}.{col}" for col in dim_cols]
     final_measures: list[str] = []
-    for cte_alias, (_, view_measures) in zip(cte_names, views.items()):
-        for m in view_measures:
-            final_measures.append(f"{cte_alias}.{m.column_name}")
+    for cte_alias, (_, view_measures) in zip(cte_names, views.items(), strict=True):
+        for measure in view_measures:
+            final_measures.append(f"{cte_alias}.{measure.sql_name}")
 
     final_select = final_dims + final_measures
     cte_join = ",\n"
@@ -125,11 +128,14 @@ def _build_multi_view_query(
     return sql, params
 
 
-def _measure_select(m: Measure) -> str:
-    """Build the SELECT expression for a measure."""
-    if m.expression:
-        return f"{m.expression} AS {m.column_name}"
-    return m.column_name
+def _measure_select(measure: Measure) -> str:
+    """Build the SELECT expression for a measure.
+
+    Metric views pre-define all aggregation logic — we select by column name only.
+    measure.expression is retained on the model for introspection but is not emitted in SQL
+    to avoid double-aggregation against the view.
+    """
+    return measure.sql_name
 
 
 def _build_where(
@@ -141,7 +147,7 @@ def _build_where(
     if not filters:
         return "", []
 
-    dim_by_canonical = {d.canonical_name: d for d in dimensions}
+    dim_by_canonical = {dim.canonical_name: dim for dim in dimensions}
     clauses: list[str] = []
     params: list = []
 
@@ -149,7 +155,7 @@ def _build_where(
         dim = dim_by_canonical.get(dim_canonical)
         if dim is None:
             continue
-        clauses.append(f"{dim.column_name} = %s")
+        clauses.append(f"{dim.sql_name} = %s")
         params.append(value)
 
     if not clauses:

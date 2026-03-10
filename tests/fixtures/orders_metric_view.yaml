@@ -1,0 +1,18 @@
+version: 1.1
+comment: "Orders KPIs for sales and financial analysis"
+source: samples.tpch.orders
+filter: o_orderdate > '1990-01-01'
+dimensions:
+  - name: Order Month
+    expr: DATE_TRUNC('MONTH', o_orderdate)
+  - name: Order Status
+    expr: "CASE WHEN o_orderstatus = 'O' THEN 'Open' WHEN o_orderstatus = 'P' THEN 'Processing' WHEN o_orderstatus = 'F' THEN 'Fulfilled' ELSE o_orderstatus END"
+  - name: Order Priority
+    expr: "SPLIT(o_orderpriority, '-')[1]"
+measures:
+  - name: Order Count
+    expr: COUNT(1)
+  - name: Total Revenue
+    expr: SUM(o_totalprice)
+  - name: Total Revenue per Customer
+    expr: SUM(o_totalprice) / COUNT(DISTINCT o_custkey)

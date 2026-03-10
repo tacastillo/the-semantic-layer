@@ -1,29 +1,34 @@
 """Tests for YAML definition parsing."""
 
-from the_semantic_layer.yaml_parser import (
+from pathlib import Path
+
+from the_semantic_layer.compilation.yaml_parser import (
     parse_from_columns_only,
     parse_metric_view_yaml,
 )
 
+FIXTURES = Path(__file__).parent / "fixtures"
+
 
 class TestParseMetricViewYaml:
     def test_explicit_measures_and_dimensions(self):
+        # Uses real Databricks YAML field names: expr (not expression), comment (not description)
         yaml_text = """
 measures:
   - name: revenue
     display_name: Revenue
-    description: Total revenue in dollars
+    comment: Total revenue in dollars
     synonyms:
       - rev
       - total revenue
-    expression: SUM(amount)
+    expr: SUM(amount)
   - name: order_count
     display_name: Order Count
-    description: Number of orders
+    comment: Number of orders
 dimensions:
   - name: date
     display_name: Date
-    description: Transaction date
+    comment: Transaction date
   - name: region
     display_name: Region
 source: catalog.schema.raw_sales
@@ -45,6 +50,56 @@ source: catalog.schema.raw_sales
         assert rev["synonyms"] == ("rev", "total revenue")
         assert rev["expression"] == "SUM(amount)"
         assert rev["data_type"] == "DOUBLE"
+
+    def test_orders_metric_view_fixture(self):
+        """Parse the real-world orders fixture (names with spaces, no semantic metadata)."""
+        yaml_text = (FIXTURES / "orders_metric_view.yaml").read_text()
+        columns = [
+            {"name": "Order Month", "type": "DATE", "nullable": True, "comment": ""},
+            {"name": "Order Status", "type": "STRING", "nullable": True, "comment": ""},
+            {"name": "Order Priority", "type": "STRING", "nullable": True, "comment": ""},
+            {"name": "Order Count", "type": "BIGINT", "nullable": True, "comment": ""},
+            {"name": "Total Revenue", "type": "DOUBLE", "nullable": True, "comment": ""},
+            {"name": "Total Revenue per Customer", "type": "DOUBLE", "nullable": True, "comment": ""},
+        ]
+        result = parse_metric_view_yaml(yaml_text, columns)
+        assert len(result["measures"]) == 3
+        assert len(result["dimensions"]) == 3
+        assert result["source"] == "samples.tpch.orders"
+
+        names = {m["name"] for m in result["measures"]}
+        assert names == {"Order Count", "Total Revenue", "Total Revenue per Customer"}
+
+        dim_names = {d["name"] for d in result["dimensions"]}
+        assert dim_names == {"Order Month", "Order Status", "Order Priority"}
+
+        # expr is parsed correctly
+        total_rev = next(m for m in result["measures"] if m["name"] == "Total Revenue")
+        assert total_rev["expression"] == "SUM(o_totalprice)"
+
+    def test_orders_semantic_metadata_fixture(self):
+        """Parse the semantic metadata fixture (display_name, synonyms, comment, expr)."""
+        yaml_text = (FIXTURES / "orders_semantic_metadata.yaml").read_text()
+        columns = [
+            {"name": "order_date", "type": "DATE", "comment": "Date when the order was placed"},
+            {"name": "customer_segment", "type": "STRING", "comment": "Customer classification"},
+            {"name": "total_revenue", "type": "DOUBLE", "comment": "Total revenue from all orders"},
+            {"name": "order_count", "type": "BIGINT", "comment": "Total number of orders"},
+        ]
+        result = parse_metric_view_yaml(yaml_text, columns)
+        assert len(result["measures"]) == 2
+        assert len(result["dimensions"]) == 2
+
+        rev = next(m for m in result["measures"] if m["name"] == "total_revenue")
+        assert rev["display_name"] == "Total Revenue"
+        assert rev["description"] == "Total revenue from all orders"
+        assert rev["expression"] == "SUM(o_totalprice)"
+        assert "revenue" in rev["synonyms"]
+        assert "total sales" in rev["synonyms"]
+
+        date_dim = next(d for d in result["dimensions"] if d["name"] == "order_date")
+        assert date_dim["display_name"] == "Order Date"
+        assert "order time" in date_dim["synonyms"]
 
     def test_string_measures(self):
         """Measures listed as plain strings (just column names)."""
@@ -83,6 +138,7 @@ dimensions:
         yaml_text = """
 measures:
   - name: revenue
+    expr: SUM(amount)
     synonyms: rev
 dimensions: []
 """

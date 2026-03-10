@@ -1,0 +1,20 @@
+{
+  "table_name": "orders_metric_view",
+  "catalog_name": "samples",
+  "schema_name": "tpch",
+  "namespace": ["samples", "tpch"],
+  "type": "METRIC_VIEW",
+  "language": "YAML",
+  "comment": "Orders KPIs for sales and financial analysis",
+  "view_text": "version: 1.1\ncomment: \"Orders KPIs for sales and financial analysis\"\nsource: samples.tpch.orders\nfilter: o_orderdate > '1990-01-01'\ndimensions:\n  - name: Order Month\n    expr: DATE_TRUNC('MONTH', o_orderdate)\n  - name: Order Status\n    expr: o_orderstatus\n  - name: Order Priority\n    expr: o_orderpriority\nmeasures:\n  - name: Order Count\n    expr: COUNT(1)\n  - name: Total Revenue\n    expr: SUM(o_totalprice)\n  - name: Total Revenue per Customer\n    expr: SUM(o_totalprice) / COUNT(DISTINCT o_custkey)\n",
+  "columns": [
+    {"name": "Order Month", "type": "DATE", "nullable": true, "comment": ""},
+    {"name": "Order Status", "type": "STRING", "nullable": true, "comment": ""},
+    {"name": "Order Priority", "type": "STRING", "nullable": true, "comment": ""},
+    {"name": "Order Count", "type": "BIGINT", "nullable": true, "comment": "", "is_measure": true},
+    {"name": "Total Revenue", "type": "DOUBLE", "nullable": true, "comment": "", "is_measure": true},
+    {"name": "Total Revenue per Customer", "type": "DOUBLE", "nullable": true, "comment": "", "is_measure": true}
+  ],
+  "owner": "test@example.com",
+  "table_properties": {}
+}

@@ -58,94 +58,23 @@ class TestQuery:
         with pytest.raises(RuntimeError, match="No warehouse connection"):
             sample_graph.query(["Revenue"], ["date"])
 
-    def test_incompatible_dimension_raises(self, sample_graph, synonym_index, sample_measures, sample_dimensions):
+    def test_incompatible_dimension_raises(self, graph_with_warehouse):
         """Requesting a dimension not in the intersection should raise."""
-        from the_semantic_layer.graph import SemanticGraph
-
-        class FakeWarehouse:
-            def execute_query(self, sql, params=None):
-                return []
-
-        graph = SemanticGraph(
-            measures=sample_measures,
-            dimensions=sample_dimensions,
-            view_measures={
-                "catalog.schema.sales": ["sales.revenue", "sales.order_count"],
-                "catalog.schema.costs": ["costs.total_cost"],
-            },
-            view_dimensions={
-                "catalog.schema.sales": ["date", "region", "product"],
-                "catalog.schema.costs": ["date", "region", "channel"],
-            },
-            measure_to_view={
-                "sales.revenue": "catalog.schema.sales",
-                "sales.order_count": "catalog.schema.sales",
-                "costs.total_cost": "catalog.schema.costs",
-            },
-            synonym_index=synonym_index,
-            warehouse=FakeWarehouse(),
-        )
         # "product" is only in sales, not in costs
         with pytest.raises(IncompatibleDimensionError):
-            graph.query(["Revenue", "Total Cost"], ["product"])
+            graph_with_warehouse.query(["Revenue", "Total Cost"], ["product"])
 
-    def test_invalid_filter_raises(self, sample_graph, synonym_index, sample_measures, sample_dimensions):
-        from the_semantic_layer.graph import SemanticGraph
-
-        class FakeWarehouse:
-            def execute_query(self, sql, params=None):
-                return []
-
-        graph = SemanticGraph(
-            measures=sample_measures,
-            dimensions=sample_dimensions,
-            view_measures={
-                "catalog.schema.sales": ["sales.revenue", "sales.order_count"],
-                "catalog.schema.costs": ["costs.total_cost"],
-            },
-            view_dimensions={
-                "catalog.schema.sales": ["date", "region", "product"],
-                "catalog.schema.costs": ["date", "region", "channel"],
-            },
-            measure_to_view={
-                "sales.revenue": "catalog.schema.sales",
-                "sales.order_count": "catalog.schema.sales",
-                "costs.total_cost": "catalog.schema.costs",
-            },
-            synonym_index=synonym_index,
-            warehouse=FakeWarehouse(),
-        )
+    def test_invalid_filter_raises(self, graph_with_warehouse):
         # Filter on "region" but only requesting dimension "date"
         with pytest.raises(InvalidFilterError):
-            graph.query(["Revenue"], ["date"], filters={"region": "US"})
+            graph_with_warehouse.query(["Revenue"], ["date"], filters={"region": "US"})
 
-    def test_query_executes_and_returns_result(self, synonym_index, sample_measures, sample_dimensions):
-        from the_semantic_layer.graph import SemanticGraph
-
-        class FakeWarehouse:
-            def execute_query(self, sql, params=None):
-                return [{"date": "2024-01-01", "revenue": 100.0}]
-
-        graph = SemanticGraph(
-            measures=sample_measures,
-            dimensions=sample_dimensions,
-            view_measures={
-                "catalog.schema.sales": ["sales.revenue", "sales.order_count"],
-                "catalog.schema.costs": ["costs.total_cost"],
-            },
-            view_dimensions={
-                "catalog.schema.sales": ["date", "region", "product"],
-                "catalog.schema.costs": ["date", "region", "channel"],
-            },
-            measure_to_view={
-                "sales.revenue": "catalog.schema.sales",
-                "sales.order_count": "catalog.schema.sales",
-                "costs.total_cost": "catalog.schema.costs",
-            },
-            synonym_index=synonym_index,
-            warehouse=FakeWarehouse(),
+    def test_query_executes_and_returns_result(self, graph_with_warehouse):
+        from tests.conftest import FakeWarehouse
+        graph_with_warehouse._warehouse = FakeWarehouse(
+            rows=[{"date": "2024-01-01", "revenue": 100.0}]
         )
-        result = graph.query(["Revenue"], ["date"])
+        result = graph_with_warehouse.query(["Revenue"], ["date"])
         assert isinstance(result, QueryResult)
         assert result.row_count == 1
         assert result.rows[0]["revenue"] == 100.0

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -42,7 +42,7 @@ def parse_metric_view_yaml(
         logger.warning("YAML definition is not a dict, falling back to column metadata")
         return _fallback_from_columns(columns)
 
-    return _parse_definition(definition, columns)
+    return _parse_definition(cast("dict[str, Any]", definition), columns)
 
 
 def parse_from_columns_only(columns: list[dict[str, Any]]) -> dict[str, Any]:
@@ -67,17 +67,17 @@ def _parse_definition(
 
     # If the YAML explicitly lists measures and dimensions
     if yaml_measures or yaml_dimensions:
-        for m in yaml_measures:
-            if isinstance(m, dict):
-                measures.append(_extract_field_info(m, col_lookup, is_measure=True))
-            elif isinstance(m, str):
-                measures.append(_field_from_column(m, col_lookup, is_measure=True))
+        for measure_entry in yaml_measures:
+            if isinstance(measure_entry, dict):
+                measures.append(_extract_field_info(cast("dict[str, Any]", measure_entry), col_lookup, is_measure=True))
+            elif isinstance(measure_entry, str):
+                measures.append(_field_from_column(measure_entry, col_lookup, is_measure=True))
 
-        for d in yaml_dimensions:
-            if isinstance(d, dict):
-                dimensions.append(_extract_field_info(d, col_lookup, is_measure=False))
-            elif isinstance(d, str):
-                dimensions.append(_field_from_column(d, col_lookup, is_measure=False))
+        for dim_entry in yaml_dimensions:
+            if isinstance(dim_entry, dict):
+                dimensions.append(_extract_field_info(cast("dict[str, Any]", dim_entry), col_lookup, is_measure=False))
+            elif isinstance(dim_entry, str):
+                dimensions.append(_field_from_column(dim_entry, col_lookup, is_measure=False))
     else:
         # Try column-level is_measure flags from the columns metadata
         for col in columns:
@@ -96,11 +96,11 @@ def _parse_definition(
 
 def _extract_field_info(
     field_def: dict[str, Any],
-    col_lookup: dict[str, dict],
+    col_lookup: dict[str, dict[str, Any]],
     is_measure: bool,
 ) -> dict[str, Any]:
     """Extract info from a YAML field definition dict."""
-    name = field_def.get("name", field_def.get("column", ""))
+    name = field_def.get("name", "")
     col_meta = col_lookup.get(name.lower(), {})
 
     synonyms = field_def.get("synonyms", [])
@@ -110,17 +110,17 @@ def _extract_field_info(
     return {
         "name": name,
         "display_name": field_def.get("display_name", name),
-        "description": field_def.get("description", field_def.get("comment", col_meta.get("comment", ""))),
+        "description": field_def.get("comment", col_meta.get("comment", "")),
         "data_type": col_meta.get("type", field_def.get("type", "")),
         "synonyms": tuple(synonyms),
-        "expression": field_def.get("expression") if is_measure else None,
+        "expression": field_def.get("expr") if is_measure else None,
         "is_measure": is_measure,
     }
 
 
 def _field_from_column(
     column_name: str,
-    col_lookup: dict[str, dict],
+    col_lookup: dict[str, dict[str, Any]],
     is_measure: bool,
 ) -> dict[str, Any]:
     """Build field info from column metadata only."""

@@ -1,7 +1,7 @@
 """Tests for SQL query generation."""
 
+from the_semantic_layer.graph.query_builder import build_query
 from the_semantic_layer.models import Dimension, Measure
-from the_semantic_layer.query_builder import build_query
 
 
 def _make_measure(name, view, expression=None):
@@ -47,14 +47,14 @@ class TestSingleViewQuery:
         sql, params = build_query(
             [m], [d], {"region": "US"}, {"sales.revenue": "cat.sch.sales"}
         )
-        assert "WHERE region = %s" in sql
+        assert "WHERE `region` = %s" in sql
         assert params == ["US"]
 
     def test_multiple_measures_same_view(self):
         m1 = _make_measure("revenue", "cat.sch.sales")
         m2 = _make_measure("order_count", "cat.sch.sales")
         d = _make_dimension("date", ["cat.sch.sales"])
-        sql, params = build_query(
+        sql, _params = build_query(
             [m1, m2], [d], None,
             {"sales.revenue": "cat.sch.sales", "sales.order_count": "cat.sch.sales"},
         )
@@ -62,13 +62,16 @@ class TestSingleViewQuery:
         assert "order_count" in sql
         assert "GROUP BY 1" in sql
 
-    def test_expression_measure(self):
+    def test_expression_field_not_emitted_in_sql(self):
+        # expression is stored on the model for introspection but not used in SQL
+        # (emitting it against a metric view would double-aggregate)
         m = _make_measure("revenue", "cat.sch.sales", expression="SUM(amount)")
         d = _make_dimension("date", ["cat.sch.sales"])
         sql, _ = build_query(
             [m], [d], None, {"sales.revenue": "cat.sch.sales"}
         )
-        assert "SUM(amount) AS revenue" in sql
+        assert "SUM(amount)" not in sql
+        assert "`revenue`" in sql
 
 
 class TestMultiViewQuery:
@@ -76,7 +79,7 @@ class TestMultiViewQuery:
         m1 = _make_measure("revenue", "cat.sch.sales")
         m2 = _make_measure("total_cost", "cat.sch.costs")
         d = _make_dimension("date", ["cat.sch.sales", "cat.sch.costs"])
-        sql, params = build_query(
+        sql, _params = build_query(
             [m1, m2], [d], None,
             {"sales.revenue": "cat.sch.sales", "costs.total_cost": "cat.sch.costs"},
         )
@@ -84,7 +87,7 @@ class TestMultiViewQuery:
         assert "cte_sales" in sql
         assert "cte_costs" in sql
         assert "INNER JOIN" in sql
-        assert "ON cte_sales.date = cte_costs.date" in sql
+        assert "ON cte_sales.`date` = cte_costs.`date`" in sql
 
     def test_multi_view_with_filter(self):
         m1 = _make_measure("revenue", "cat.sch.sales")
@@ -95,7 +98,7 @@ class TestMultiViewQuery:
             {"sales.revenue": "cat.sch.sales", "costs.total_cost": "cat.sch.costs"},
         )
         # Filter should appear in both CTEs
-        assert sql.count("region = %s") == 2
+        assert sql.count("`region` = %s") == 2
         assert params == ["EU", "EU"]
 
     def test_multiple_dimensions_join(self):
@@ -107,5 +110,5 @@ class TestMultiViewQuery:
             [m1, m2], [d1, d2], None,
             {"sales.revenue": "cat.sch.sales", "costs.total_cost": "cat.sch.costs"},
         )
-        assert "cte_sales.date = cte_costs.date" in sql
-        assert "cte_sales.region = cte_costs.region" in sql
+        assert "cte_sales.`date` = cte_costs.`date`" in sql
+        assert "cte_sales.`region` = cte_costs.`region`" in sql

@@ -3,7 +3,7 @@
 import pytest
 
 from the_semantic_layer.errors import AmbiguousNameError, UnresolvedNameError
-from the_semantic_layer.synonym_index import SynonymIndex
+from the_semantic_layer.graph.synonym_index import SynonymIndex
 
 
 class TestSynonymIndex:

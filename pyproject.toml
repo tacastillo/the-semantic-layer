@@ -6,24 +6,67 @@ build-backend = "hatchling.build"
 name = "the-semantic-layer"
 version = "0.1.0"
 description = "A compiled graph of measures, dimensions, and compatibility relationships over Unity Catalog metric views."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "databricks-sql-connector>=3.0.0",
     "PyYAML>=6.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-cov",
-    "ruff",
-]
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/the_semantic_layer"]
 
+# ---------------------------------------------------------------------------
+# dev dependencies (PEP 735 dependency groups — installed by uv automatically)
+# ---------------------------------------------------------------------------
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.15.0",
+    "ty>=0.0.1",
+]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=src --cov-report=term-missing"
 
+# ---------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
 [tool.ruff]
+target-version = "py312"
+line-length = 105
 src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes — undefined names, unused imports
+    "I",    # isort — import sorting
+    "UP",   # pyupgrade — modernize syntax for Python 3.12+
+    "B",    # flake8-bugbear — common bugs and design issues
+    "C4",   # flake8-comprehensions — comprehension misuse
+    "SIM",  # flake8-simplify — code simplification
+    "RET",  # flake8-return — return statement hygiene
+    "TC",   # flake8-type-checking — move type-only imports under TYPE_CHECKING
+    "RUF",  # Ruff-specific rules
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# ty (Astral's type checker — beta)
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+python-version = "3.12"

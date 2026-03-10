@@ -8,14 +8,15 @@ from the_semantic_layer.errors import (
     SemanticLayerError,
     UnresolvedNameError,
 )
-from the_semantic_layer.graph import SemanticGraph
+from the_semantic_layer.graph import GraphStore, InMemoryGraphStore, SemanticGraph
 from the_semantic_layer.models import Dimension, Measure, QueryResult
 
 __all__ = [
-    "compile",
     "AmbiguousNameError",
     "CompilationError",
     "Dimension",
+    "GraphStore",
+    "InMemoryGraphStore",
     "IncompatibleDimensionError",
     "InvalidFilterError",
     "Measure",
@@ -23,6 +24,7 @@ __all__ = [
     "SemanticGraph",
     "SemanticLayerError",
     "UnresolvedNameError",
+    "compile",
 ]
 
 
@@ -45,8 +47,8 @@ def compile(
     Returns:
         A fully compiled SemanticGraph ready for queries.
     """
-    from the_semantic_layer.compiler import compile_from_warehouse
-    from the_semantic_layer.warehouse import WarehouseConnection
+    from the_semantic_layer.compilation.compiler import compile_from_warehouse
+    from the_semantic_layer.compilation.warehouse import WarehouseConnection
 
     warehouse = WarehouseConnection(
         host=host,

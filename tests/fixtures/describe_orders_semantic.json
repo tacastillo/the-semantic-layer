@@ -1,0 +1,18 @@
+{
+  "table_name": "orders_semantic",
+  "catalog_name": "samples",
+  "schema_name": "tpch",
+  "namespace": ["samples", "tpch"],
+  "type": "METRIC_VIEW",
+  "language": "YAML",
+  "comment": "Comprehensive sales metrics with enhanced semantic metadata",
+  "view_text": "version: 1.1\nsource: samples.tpch.orders\ncomment: Comprehensive sales metrics with enhanced semantic metadata\ndimensions:\n  - name: order_date\n    expr: o_orderdate\n    comment: Date when the order was placed\n    display_name: Order Date\n    synonyms:\n      - order time\n      - date of order\n  - name: customer_segment\n    expr: \"CASE WHEN o_totalprice > 100000 THEN 'Enterprise' ELSE 'SMB' END\"\n    comment: Customer classification based on order value\n    display_name: Customer Segment\n    synonyms:\n      - segment\n      - customer tier\nmeasures:\n  - name: total_revenue\n    expr: SUM(o_totalprice)\n    comment: Total revenue from all orders\n    display_name: Total Revenue\n    synonyms:\n      - revenue\n      - total sales\n      - sales amount\n  - name: order_count\n    expr: COUNT(1)\n    comment: Total number of orders\n    display_name: Order Count\n    synonyms:\n      - count\n      - number of orders\n",
+  "columns": [
+    {"name": "order_date", "type": "DATE", "nullable": true, "comment": "Date when the order was placed"},
+    {"name": "customer_segment", "type": "STRING", "nullable": true, "comment": "Customer classification based on order value"},
+    {"name": "total_revenue", "type": "DOUBLE", "nullable": true, "comment": "Total revenue from all orders", "is_measure": true},
+    {"name": "order_count", "type": "BIGINT", "nullable": true, "comment": "Total number of orders", "is_measure": true}
+  ],
+  "owner": "test@example.com",
+  "table_properties": {}
+}

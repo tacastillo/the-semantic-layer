@@ -58,7 +58,7 @@ class WarehouseConnection:
         import json
 
         first_row = rows[0]
-        json_str = first_row.get("json", first_row.get(list(first_row.keys())[0], "{}"))
+        json_str = first_row.get("json", first_row.get(next(iter(first_row.keys())), "{}"))
         return json.loads(json_str)
 
     def execute_query(self, sql: str, parameters: list | None = None) -> list[dict]:
@@ -78,7 +78,7 @@ class WarehouseConnection:
                 return []
 
             columns = [desc[0] for desc in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
         finally:
             cursor.close()
 

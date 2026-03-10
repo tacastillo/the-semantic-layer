@@ -1,9 +1,12 @@
 """Tests for the compiler with mocked warehouse."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
-from the_semantic_layer.compiler import compile_from_warehouse
+from the_semantic_layer.compilation import compile_from_warehouse
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _make_metric_view_metadata(view_name, yaml_text, columns):
@@ -125,6 +128,50 @@ dimensions:
         measures = graph.list_measures()
         assert len(measures) == 1
         assert measures[0]["canonical_name"] == "sales.revenue"
+
+    def test_compiles_from_describe_table_fixture(self):
+        """Compile from a realistic DESCRIBE TABLE EXTENDED AS JSON fixture."""
+        metadata = json.loads((FIXTURES / "describe_orders_metric_view.json").read_text())
+        warehouse = MagicMock()
+        warehouse.list_tables.return_value = ["samples.tpch.orders_metric_view"]
+        warehouse.describe_view.return_value = metadata
+
+        graph = compile_from_warehouse(warehouse)
+        measures = graph.list_measures()
+        assert len(measures) == 3
+
+        names = {m["canonical_name"] for m in measures}
+        assert "orders_metric_view.order count" in names
+        assert "orders_metric_view.total revenue" in names
+        assert "orders_metric_view.total revenue per customer" in names
+
+        dims = graph.get_dimensions_for_measures(["orders_metric_view.order count"])
+        dim_names = {d["canonical_name"] for d in dims}
+        assert "order month" in dim_names
+        assert "order status" in dim_names
+        assert "order priority" in dim_names
+
+    def test_compiles_semantic_metadata_fixture(self):
+        """Compile from a fixture with display_name, synonyms, and expr fields."""
+        metadata = json.loads((FIXTURES / "describe_orders_semantic.json").read_text())
+        warehouse = MagicMock()
+        warehouse.list_tables.return_value = ["samples.tpch.orders_semantic"]
+        warehouse.describe_view.return_value = metadata
+
+        graph = compile_from_warehouse(warehouse)
+        measures = graph.list_measures()
+
+        rev = next(m for m in measures if "revenue" in m["canonical_name"])
+        assert rev["display_name"] == "Total Revenue"
+        assert "revenue" in rev["synonyms"]
+
+        # Synonyms resolve correctly
+        dims = graph.get_dimensions_for_measures(["revenue"])
+        assert any(d["canonical_name"] == "order_date" for d in dims)
+
+        # Dimension synonym resolution
+        dims2 = graph.get_dimensions_for_measures(["order count"])
+        assert any(d["canonical_name"] == "order_date" for d in dims2)
 
     def test_fallback_without_yaml(self):
         warehouse = MagicMock()

@@ -2,25 +2,8 @@
 
 import pytest
 
-from the_semantic_layer.graph import SemanticGraph
+from the_semantic_layer.graph import InMemoryGraphStore, SemanticGraph
 from the_semantic_layer.models import Dimension, Measure
-from the_semantic_layer.synonym_index import SynonymIndex
-
-
-@pytest.fixture
-def synonym_index():
-    """A pre-populated synonym index."""
-    idx = SynonymIndex()
-    # Measures
-    idx.register("sales.revenue", ["Revenue", "rev", "total revenue", "revenue"], "measure")
-    idx.register("sales.order_count", ["Order Count", "orders", "order_count"], "measure")
-    idx.register("costs.total_cost", ["Total Cost", "cost", "total_cost"], "measure")
-    # Dimensions
-    idx.register("date", ["Date", "date"], "dimension")
-    idx.register("region", ["Region", "region"], "dimension")
-    idx.register("product", ["Product", "product"], "dimension")
-    idx.register("channel", ["Channel", "channel"], "dimension")
-    return idx
 
 
 @pytest.fixture
@@ -99,24 +82,73 @@ def sample_dimensions():
 
 
 @pytest.fixture
-def sample_graph(sample_measures, sample_dimensions, synonym_index):
+def sample_graph(sample_measures, sample_dimensions):
     """A SemanticGraph built from fixtures (no warehouse)."""
-    return SemanticGraph(
-        measures=sample_measures,
-        dimensions=sample_dimensions,
-        view_measures={
-            "catalog.schema.sales": ["sales.revenue", "sales.order_count"],
-            "catalog.schema.costs": ["costs.total_cost"],
-        },
-        view_dimensions={
-            "catalog.schema.sales": ["date", "region", "product"],
-            "catalog.schema.costs": ["date", "region", "channel"],
-        },
-        measure_to_view={
-            "sales.revenue": "catalog.schema.sales",
-            "sales.order_count": "catalog.schema.sales",
-            "costs.total_cost": "catalog.schema.costs",
-        },
-        synonym_index=synonym_index,
-        warehouse=None,
-    )
+    store = InMemoryGraphStore()
+
+    for canonical, measure in sample_measures.items():
+        store.add_measure(measure, measure.metric_view)
+        store.register_synonym(
+            canonical,
+            [measure.display_name, measure.column_name, *measure.synonyms],
+            "measure",
+        )
+
+    for canonical, dim in sample_dimensions.items():
+        for view_fqn in dim.metric_views:
+            # Use add_or_merge_dimension so shared dims (date, region) register correctly
+            store.add_or_merge_dimension(
+                Dimension(
+                    canonical_name=canonical,
+                    column_name=dim.column_name,
+                    display_name=dim.display_name,
+                    description=dim.description,
+                    data_type=dim.data_type,
+                    synonyms=dim.synonyms,
+                    metric_views=(view_fqn,),
+                ),
+                view_fqn,
+            )
+
+    return SemanticGraph(store=store, warehouse=None)
+
+
+class FakeWarehouse:
+    """Minimal warehouse stub for tests that need query execution."""
+
+    def __init__(self, rows=None):
+        self.rows = rows or []
+
+    def execute_query(self, sql, params=None):
+        return self.rows
+
+
+@pytest.fixture
+def graph_with_warehouse(sample_measures, sample_dimensions):
+    """A SemanticGraph with a fake warehouse, for testing query() paths."""
+    store = InMemoryGraphStore()
+
+    for canonical, measure in sample_measures.items():
+        store.add_measure(measure, measure.metric_view)
+        store.register_synonym(
+            canonical,
+            [measure.display_name, measure.column_name, *measure.synonyms],
+            "measure",
+        )
+
+    for canonical, dim in sample_dimensions.items():
+        for view_fqn in dim.metric_views:
+            store.add_or_merge_dimension(
+                Dimension(
+                    canonical_name=canonical,
+                    column_name=dim.column_name,
+                    display_name=dim.display_name,
+                    description=dim.description,
+                    data_type=dim.data_type,
+                    synonyms=dim.synonyms,
+                    metric_views=(view_fqn,),
+                ),
+                view_fqn,
+            )
+
+    return SemanticGraph(store=store, warehouse=FakeWarehouse())
