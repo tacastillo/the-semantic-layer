@@ -19,6 +19,11 @@ uv run pytest tests/test_graph.py
 uv run pytest tests/test_query_builder.py::TestSingleViewQuery::test_basic_select
 ```
 
+Run tests with coverage:
+```bash
+uv run pytest --cov=src --cov-report=term-missing
+```
+
 Lint (ruff) and type-check (ty):
 ```bash
 uv run ruff check src/
@@ -29,6 +34,16 @@ Format:
 ```bash
 uv run ruff format src/ tests/
 ```
+
+## Tool configuration
+
+**Ruff**: Target Python 3.12, line length 105, double-quoted strings. Rule sets: E, W, F, I, UP, B, C4, SIM, RET, TC, RUF. Tests ignore S101 (assert).
+
+**ty**: Astral's experimental type checker (not mypy). Target Python 3.12.
+
+**pytest**: Test directory is `tests/`. Coverage configured for `src/`.
+
+All tool settings live in `pyproject.toml`.
 
 ## Architecture
 
@@ -50,6 +65,20 @@ src/the_semantic_layer/
     ├── synonym_index.py  # case-insensitive alias → canonical name registry
     ├── semantic_graph.py # SemanticGraph consumer API
     └── query_builder.py  # SQL generation (single-view and multi-view CTE)
+```
+
+### Public API (`__init__.py` exports)
+
+```python
+compile()                    # Main entry: warehouse → SemanticGraph
+SemanticGraph                # Consumer API (list_measures, get_dimensions_for_measures, query)
+GraphStore                   # Abstract storage backend (ABC)
+InMemoryGraphStore           # Default dict-based implementation
+Measure, Dimension           # Core frozen dataclasses
+QueryResult                  # Query output (rows, row_count, sql)
+# Exceptions:
+SemanticLayerError, UnresolvedNameError, AmbiguousNameError,
+IncompatibleDimensionError, InvalidFilterError, CompilationError
 ```
 
 ### Data flow
@@ -74,9 +103,34 @@ src/the_semantic_layer/
 
 **`WarehouseConnection`** is the sole I/O boundary. Tests mock it entirely — no Databricks connection needed to run tests.
 
+**`QueryResult.sql`** stores the generated SQL string for introspection/debugging.
+
 ### Databricks metric view YAML field names (spec v1.1)
 
 - `expr` — SQL expression (NOT `expression`)
 - `comment` — description text (NOT `description`)
 - `display_name`, `synonyms`, `format` — semantic metadata
 - Top-level: `source`, `filter`, `joins`, `version`
+
+### Error hierarchy
+
+All exceptions inherit from `SemanticLayerError`:
+- `UnresolvedNameError` — name not found in graph
+- `AmbiguousNameError` — name maps to multiple canonical entries
+- `IncompatibleDimensionError` — dimension not shared across all requested measures' views
+- `InvalidFilterError` — filter references a dimension not in the requested set
+- `CompilationError` — warehouse introspection failure
+
+## Testing conventions
+
+- Tests use pytest. No Databricks connection needed — `WarehouseConnection` is mocked via `FakeWarehouse` in `conftest.py`.
+- Shared fixtures in `tests/conftest.py`: `sample_measures`, `sample_dimensions`, `sample_graph`, `graph_with_warehouse`.
+- Real-world JSON fixtures in `tests/fixtures/` for `DESCRIBE TABLE EXTENDED AS JSON` output.
+- Test modules mirror source modules: `test_graph.py`, `test_query_builder.py`, `test_synonym_index.py`, `test_yaml_parser.py`, `test_compiler.py`.
+
+## Dependencies
+
+- **Runtime**: `databricks-sql-connector>=3.0.0`, `PyYAML>=6.0`
+- **Dev**: `pytest>=8.0`, `pytest-cov>=5.0`, `ruff>=0.15.0`, `ty>=0.0.1`
+- **Python**: >= 3.12
+- **Build system**: Hatchling
