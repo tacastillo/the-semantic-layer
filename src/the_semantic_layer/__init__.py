@@ -10,20 +10,44 @@ from the_semantic_layer.errors import (
 )
 from the_semantic_layer.graph import GraphStore, InMemoryGraphStore, SemanticGraph
 from the_semantic_layer.models import Dimension, Measure, QueryResult
+from the_semantic_layer.types import (
+    DimensionDefinition,
+    FilterClause,
+    MeasureDefinition,
+    NeighborResult,
+    NodeResult,
+    PathResult,
+    QueryPlan,
+    SemanticBackend,
+    ValidationResult,
+    ViewDefinition,
+    ViewSummary,
+)
 
 __all__ = [
     "AmbiguousNameError",
     "CompilationError",
     "Dimension",
+    "DimensionDefinition",
+    "FilterClause",
     "GraphStore",
     "InMemoryGraphStore",
     "IncompatibleDimensionError",
     "InvalidFilterError",
     "Measure",
+    "MeasureDefinition",
+    "NeighborResult",
+    "NodeResult",
+    "PathResult",
+    "QueryPlan",
     "QueryResult",
+    "SemanticBackend",
     "SemanticGraph",
     "SemanticLayerError",
     "UnresolvedNameError",
+    "ValidationResult",
+    "ViewDefinition",
+    "ViewSummary",
     "compile",
 ]
 

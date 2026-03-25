@@ -39,19 +39,14 @@ class WarehouseConnection:
         """List all tables/views in the configured catalog.schema."""
         fqn = f"{self.catalog}.{self.schema}"
         rows = self._execute(f"SHOW TABLES IN {fqn}")
-        return [
-            f"{self.catalog}.{self.schema}.{row['tableName']}"
-            for row in rows
-        ]
+        return [f"{self.catalog}.{self.schema}.{row['tableName']}" for row in rows]
 
     def describe_view(self, fully_qualified_name: str) -> dict[str, Any]:
         """Run DESCRIBE TABLE EXTENDED AS JSON for a given view.
 
         Returns the parsed JSON dict.
         """
-        rows = self._execute(
-            f"DESCRIBE TABLE EXTENDED {fully_qualified_name} AS JSON"
-        )
+        rows = self._execute(f"DESCRIBE TABLE EXTENDED {fully_qualified_name} AS JSON")
         if not rows:
             return {}
         # The result is a single row with a single column containing JSON

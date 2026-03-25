@@ -65,3 +65,43 @@ class TestSynonymIndex:
         idx.register("sales.revenue", ["Revenue"], "measure")
         with pytest.raises(UnresolvedNameError):
             idx.resolve("Revenue", "dimension")
+
+
+class TestSuggest:
+    def test_prefix_match(self):
+        idx = SynonymIndex()
+        idx.register("sales.revenue", ["Revenue", "rev"], "measure")
+        suggestions = idx.suggest("rev", "measure")
+        assert "sales.revenue" in suggestions
+
+    def test_substring_match(self):
+        idx = SynonymIndex()
+        idx.register("sales.total_revenue", ["total revenue"], "measure")
+        suggestions = idx.suggest("revenue", "measure")
+        assert "sales.total_revenue" in suggestions
+
+    def test_typo_with_character_overlap(self):
+        idx = SynonymIndex()
+        idx.register("sales.revenue", ["Revenue"], "measure")
+        suggestions = idx.suggest("revnue", "measure")
+        assert "sales.revenue" in suggestions
+
+    def test_no_close_match(self):
+        idx = SynonymIndex()
+        idx.register("sales.revenue", ["Revenue"], "measure")
+        suggestions = idx.suggest("zzzzz", "measure")
+        assert suggestions == []
+
+    def test_kind_filtering(self):
+        idx = SynonymIndex()
+        idx.register("sales.revenue", ["Revenue"], "measure")
+        idx.register("date", ["Date"], "dimension")
+        suggestions = idx.suggest("rev", "dimension")
+        assert "sales.revenue" not in suggestions
+
+    def test_max_results(self):
+        idx = SynonymIndex()
+        for i in range(10):
+            idx.register(f"view.metric_{i}", [f"metric_{i}"], "measure")
+        suggestions = idx.suggest("metric", "measure", max_results=3)
+        assert len(suggestions) <= 3

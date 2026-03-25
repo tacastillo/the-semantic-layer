@@ -10,10 +10,19 @@ import yaml
 logger = logging.getLogger(__name__)
 
 # Numeric types that indicate a column is likely a measure when YAML is unavailable
-_NUMERIC_TYPES = frozenset({
-    "INT", "INTEGER", "BIGINT", "SMALLINT", "TINYINT",
-    "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC",
-})
+_NUMERIC_TYPES = frozenset(
+    {
+        "INT",
+        "INTEGER",
+        "BIGINT",
+        "SMALLINT",
+        "TINYINT",
+        "FLOAT",
+        "DOUBLE",
+        "DECIMAL",
+        "NUMERIC",
+    }
+)
 
 
 def parse_metric_view_yaml(
@@ -69,13 +78,19 @@ def _parse_definition(
     if yaml_measures or yaml_dimensions:
         for measure_entry in yaml_measures:
             if isinstance(measure_entry, dict):
-                measures.append(_extract_field_info(cast("dict[str, Any]", measure_entry), col_lookup, is_measure=True))
+                measures.append(
+                    _extract_field_info(
+                        cast("dict[str, Any]", measure_entry), col_lookup, is_measure=True
+                    )
+                )
             elif isinstance(measure_entry, str):
                 measures.append(_field_from_column(measure_entry, col_lookup, is_measure=True))
 
         for dim_entry in yaml_dimensions:
             if isinstance(dim_entry, dict):
-                dimensions.append(_extract_field_info(cast("dict[str, Any]", dim_entry), col_lookup, is_measure=False))
+                dimensions.append(
+                    _extract_field_info(cast("dict[str, Any]", dim_entry), col_lookup, is_measure=False)
+                )
             elif isinstance(dim_entry, str):
                 dimensions.append(_field_from_column(dim_entry, col_lookup, is_measure=False))
     else:

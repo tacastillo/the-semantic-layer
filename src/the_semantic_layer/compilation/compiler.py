@@ -13,6 +13,7 @@ from the_semantic_layer.errors import CompilationError
 from the_semantic_layer.graph import SemanticGraph
 from the_semantic_layer.graph.store import GraphStore, InMemoryGraphStore
 from the_semantic_layer.models import Dimension, Measure
+from the_semantic_layer.types import DimensionDefinition, MeasureDefinition, ViewDefinition
 
 if TYPE_CHECKING:
     from the_semantic_layer.compilation.warehouse import WarehouseConnection
@@ -44,6 +45,7 @@ def compile_from_warehouse(
     except Exception as exc:
         raise CompilationError(f"Failed to list tables: {exc}") from exc
 
+    views: list[ViewDefinition] = []
     for table_fqn in table_names:
         try:
             metadata = warehouse.describe_view(table_fqn)
@@ -55,8 +57,10 @@ def compile_from_warehouse(
             continue
 
         logger.info("Compiling metric view: %s", table_fqn)
-        _compile_view(table_fqn, metadata, store)
+        view_def = _compile_view(table_fqn, metadata)
+        views.append(view_def)
 
+    _hydrate_store(store, views)
     return SemanticGraph(store=store, warehouse=warehouse)
 
 
@@ -66,8 +70,8 @@ def _is_metric_view(metadata: dict[str, Any]) -> bool:
     return isinstance(language, str) and language.upper() == "YAML"
 
 
-def _compile_view(view_fqn: str, metadata: dict[str, Any], store: GraphStore) -> None:
-    """Parse a single metric view and write it into the store."""
+def _compile_view(view_fqn: str, metadata: dict[str, Any]) -> ViewDefinition:
+    """Parse a single metric view and return a ViewDefinition."""
     columns = _extract_columns(metadata)
     view_short_name = view_fqn.rsplit(".", 1)[-1]
 
@@ -77,37 +81,72 @@ def _compile_view(view_fqn: str, metadata: dict[str, Any], store: GraphStore) ->
     else:
         parsed = parse_from_columns_only(columns)
 
-    for m_info in parsed["measures"]:
-        canonical = f"{view_short_name}.{m_info['name']}".lower()
-        measure = Measure(
-            canonical_name=canonical,
-            column_name=m_info["name"],
-            metric_view=view_fqn,
+    measure_defs = [
+        MeasureDefinition(
+            name=m_info["name"],
             display_name=m_info.get("display_name", m_info["name"]),
             description=m_info.get("description", ""),
             data_type=m_info.get("data_type", ""),
             synonyms=tuple(m_info.get("synonyms", ())),
             expression=m_info.get("expression"),
         )
-        store.add_measure(measure, view_fqn)
-        store.register_synonym(
-            canonical,
-            [measure.display_name, measure.column_name, *measure.synonyms],
-            "measure",
-        )
+        for m_info in parsed["measures"]
+    ]
 
-    for d_info in parsed["dimensions"]:
-        canonical = d_info["name"].lower()
-        dimension = Dimension(
-            canonical_name=canonical,
-            column_name=d_info["name"],
+    dimension_defs = [
+        DimensionDefinition(
+            name=d_info["name"],
             display_name=d_info.get("display_name", d_info["name"]),
             description=d_info.get("description", ""),
             data_type=d_info.get("data_type", ""),
             synonyms=tuple(d_info.get("synonyms", ())),
-            metric_views=(view_fqn,),
         )
-        store.add_or_merge_dimension(dimension, view_fqn)
+        for d_info in parsed["dimensions"]
+    ]
+
+    return ViewDefinition(
+        name=view_short_name,
+        fqn=view_fqn,
+        description="",
+        measures=measure_defs,
+        dimensions=dimension_defs,
+    )
+
+
+def _hydrate_store(store: GraphStore, views: list[ViewDefinition]) -> None:
+    """Populate a GraphStore from compiled ViewDefinitions."""
+    for view in views:
+        for m_def in view.measures:
+            canonical = f"{view.name}.{m_def.name}".lower()
+            measure = Measure(
+                canonical_name=canonical,
+                column_name=m_def.name,
+                metric_view=view.fqn,
+                display_name=m_def.display_name,
+                description=m_def.description,
+                data_type=m_def.data_type,
+                synonyms=m_def.synonyms,
+                expression=m_def.expression,
+            )
+            store.add_measure(measure, view.fqn)
+            store.register_synonym(
+                canonical,
+                [measure.display_name, measure.column_name, *measure.synonyms],
+                "measure",
+            )
+
+        for d_def in view.dimensions:
+            canonical = d_def.name.lower()
+            dimension = Dimension(
+                canonical_name=canonical,
+                column_name=d_def.name,
+                display_name=d_def.display_name,
+                description=d_def.description,
+                data_type=d_def.data_type,
+                synonyms=d_def.synonyms,
+                metric_views=(view.fqn,),
+            )
+            store.add_or_merge_dimension(dimension, view.fqn)
 
 
 def _extract_columns(metadata: dict[str, Any]) -> list[dict[str, Any]]:

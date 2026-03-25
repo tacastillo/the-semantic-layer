@@ -37,6 +37,10 @@ class GraphStore(ABC):
         """Return all known measures."""
 
     @abstractmethod
+    def all_dimensions(self) -> list[Dimension]:
+        """Return all known dimensions."""
+
+    @abstractmethod
     def get_measure(self, canonical_name: str) -> Measure | None:
         """Return a measure by canonical name."""
 
@@ -55,6 +59,22 @@ class GraphStore(ABC):
     @abstractmethod
     def resolve_name(self, name: str, kind: str) -> str:
         """Resolve an alias to its canonical name. Raises on miss or ambiguity."""
+
+    @abstractmethod
+    def suggest_name(self, name: str, kind: str, max_results: int = 5) -> list[str]:
+        """Suggest canonical names for a near-miss lookup."""
+
+    @abstractmethod
+    def get_views(self) -> list[str]:
+        """Return all known view FQNs."""
+
+    @abstractmethod
+    def get_measures_for_view(self, view_fqn: str) -> list[str]:
+        """Return measure canonical names belonging to a view."""
+
+    @abstractmethod
+    def get_dimensions_for_view(self, view_fqn: str) -> list[str]:
+        """Return dimension canonical names belonging to a view."""
 
 
 class InMemoryGraphStore(GraphStore):
@@ -105,6 +125,9 @@ class InMemoryGraphStore(GraphStore):
     def all_measures(self) -> list[Measure]:
         return list(self._measures.values())
 
+    def all_dimensions(self) -> list[Dimension]:
+        return list(self._dimensions.values())
+
     def get_measure(self, canonical_name: str) -> Measure | None:
         return self._measures.get(canonical_name)
 
@@ -121,3 +144,15 @@ class InMemoryGraphStore(GraphStore):
 
     def resolve_name(self, name: str, kind: str) -> str:
         return self._synonym_index.resolve(name, kind)
+
+    def suggest_name(self, name: str, kind: str, max_results: int = 5) -> list[str]:
+        return self._synonym_index.suggest(name, kind, max_results)
+
+    def get_views(self) -> list[str]:
+        return list(self._view_measures.keys())
+
+    def get_measures_for_view(self, view_fqn: str) -> list[str]:
+        return list(self._view_measures.get(view_fqn, []))
+
+    def get_dimensions_for_view(self, view_fqn: str) -> list[str]:
+        return list(self._view_dimensions.get(view_fqn, []))

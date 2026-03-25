@@ -5,6 +5,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from the_semantic_layer.compilation import compile_from_warehouse
+from the_semantic_layer.compilation.compiler import _compile_view, _hydrate_store
+from the_semantic_layer.graph.store import InMemoryGraphStore
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -190,3 +192,62 @@ dimensions:
         assert len(measures) == 1
         assert measures[0]["canonical_name"] == "metrics.amount"
         assert len(dims) == 1
+
+
+class TestCompileView:
+    def test_returns_view_definition(self):
+        metadata = _make_metric_view_metadata(
+            "sales",
+            yaml_text="""
+measures:
+  - name: revenue
+    display_name: Revenue
+    synonyms:
+      - rev
+dimensions:
+  - name: date
+    display_name: Date
+""",
+            columns=[
+                {"name": "revenue", "type": "DOUBLE", "comment": ""},
+                {"name": "date", "type": "DATE", "comment": ""},
+            ],
+        )
+        view_def = _compile_view("cat.sch.sales", metadata)
+        assert view_def.name == "sales"
+        assert view_def.fqn == "cat.sch.sales"
+        assert len(view_def.measures) == 1
+        assert view_def.measures[0].name == "revenue"
+        assert view_def.measures[0].display_name == "Revenue"
+        assert view_def.measures[0].synonyms == ("rev",)
+        assert len(view_def.dimensions) == 1
+        assert view_def.dimensions[0].name == "date"
+
+
+class TestHydrateStore:
+    def test_populates_store_from_view_definitions(self):
+        metadata = _make_metric_view_metadata(
+            "sales",
+            yaml_text="""
+measures:
+  - name: revenue
+    display_name: Revenue
+dimensions:
+  - name: date
+  - name: region
+""",
+            columns=[
+                {"name": "revenue", "type": "DOUBLE", "comment": ""},
+                {"name": "date", "type": "DATE", "comment": ""},
+                {"name": "region", "type": "STRING", "comment": ""},
+            ],
+        )
+        view_def = _compile_view("cat.sch.sales", metadata)
+        store = InMemoryGraphStore()
+        _hydrate_store(store, [view_def])
+
+        assert len(store.all_measures()) == 1
+        assert store.get_measure("sales.revenue") is not None
+        assert store.get_dimension("date") is not None
+        assert store.get_dimension("region") is not None
+        assert store.resolve_name("Revenue", "measure") == "sales.revenue"

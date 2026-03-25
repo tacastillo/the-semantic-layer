@@ -6,43 +6,41 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from the_semantic_layer.models import Dimension, Measure
+    from the_semantic_layer.types import FilterClause, QueryPlan
 
 
-def build_query(
-    measures: list[Measure],
-    dimensions: list[Dimension],
-    filters: dict[str, str] | None,
-    measure_to_view: dict[str, str],
-) -> tuple[str, list]:
-    """Build a SQL query for the requested measures and dimensions.
+def build_query(plan: QueryPlan) -> tuple[str, list]:
+    """Build a SQL query from a QueryPlan.
 
     Args:
-        measures: Resolved Measure objects.
-        dimensions: Resolved Dimension objects.
-        filters: Dimension canonical_name -> filter value (equality only).
-        measure_to_view: Mapping of measure canonical_name -> metric view FQN.
+        plan: A fully resolved QueryPlan with measures, dimensions, filters,
+              measure-to-view mapping, and optional max_rows.
 
     Returns:
         A tuple of (sql_string, parameters) where parameters is a list of
         bind-parameter values corresponding to %s placeholders in the SQL.
     """
-    filters = filters or {}
-
     # Group measures by their metric view
     views: dict[str, list[Measure]] = {}
-    for m in measures:
-        view = measure_to_view[m.canonical_name]
+    for m in plan.measures:
+        view = plan.measure_to_view[m.canonical_name]
         views.setdefault(view, []).append(m)
 
     if len(views) == 1:
-        return _build_single_view_query(measures, dimensions, filters, views)
-    return _build_multi_view_query(measures, dimensions, filters, views)
+        sql, params = _build_single_view_query(plan.measures, plan.dimensions, plan.filters, views)
+    else:
+        sql, params = _build_multi_view_query(plan.measures, plan.dimensions, plan.filters, views)
+
+    if plan.max_rows is not None:
+        sql += f"\nLIMIT {plan.max_rows}"
+
+    return sql, params
 
 
 def _build_single_view_query(
     measures: list[Measure],
     dimensions: list[Dimension],
-    filters: dict[str, str],
+    filters: list[FilterClause],
     views: dict[str, list[Measure]],
 ) -> tuple[str, list]:
     """Build a simple SELECT for measures from a single metric view."""
@@ -72,7 +70,7 @@ def _build_single_view_query(
 def _build_multi_view_query(
     measures: list[Measure],
     dimensions: list[Dimension],
-    filters: dict[str, str],
+    filters: list[FilterClause],
     views: dict[str, list[Measure]],
 ) -> tuple[str, list]:
     """Build a CTE-based query joining measures from multiple metric views."""
@@ -120,9 +118,7 @@ def _build_multi_view_query(
 
     # INNER JOIN remaining CTEs on shared dimensions
     for cte_alias in cte_names[1:]:
-        join_on = " AND ".join(
-            f"{first_cte}.{col} = {cte_alias}.{col}" for col in dim_cols
-        )
+        join_on = " AND ".join(f"{first_cte}.{col} = {cte_alias}.{col}" for col in dim_cols)
         sql += f"\nINNER JOIN {cte_alias}\n    ON {join_on}"
 
     return sql, params
@@ -131,7 +127,7 @@ def _build_multi_view_query(
 def _measure_select(measure: Measure) -> str:
     """Build the SELECT expression for a measure.
 
-    Metric views pre-define all aggregation logic — we select by column name only.
+    Metric views pre-define all aggregation logic -- we select by column name only.
     measure.expression is retained on the model for introspection but is not emitted in SQL
     to avoid double-aggregation against the view.
     """
@@ -140,10 +136,10 @@ def _measure_select(measure: Measure) -> str:
 
 def _build_where(
     dimensions: list[Dimension],
-    filters: dict[str, str],
+    filters: list[FilterClause],
     indent: int = 0,
 ) -> tuple[str, list]:
-    """Build a WHERE clause from equality filters."""
+    """Build a WHERE clause from FilterClause objects."""
     if not filters:
         return "", []
 
@@ -151,12 +147,17 @@ def _build_where(
     clauses: list[str] = []
     params: list = []
 
-    for dim_canonical, value in sorted(filters.items()):
-        dim = dim_by_canonical.get(dim_canonical)
+    for fc in sorted(filters, key=lambda f: f.dimension):
+        dim = dim_by_canonical.get(fc.dimension)
         if dim is None:
             continue
-        clauses.append(f"{dim.sql_name} = %s")
-        params.append(value)
+        if len(fc.values) == 1:
+            clauses.append(f"{dim.sql_name} = %s")
+            params.append(fc.values[0])
+        else:
+            placeholders = ", ".join("%s" for _ in fc.values)
+            clauses.append(f"{dim.sql_name} IN ({placeholders})")
+            params.extend(fc.values)
 
     if not clauses:
         return "", []
